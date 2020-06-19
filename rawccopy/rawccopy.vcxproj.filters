@@ -1,0 +1,108 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="attribs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="bootsector.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="byte-buffer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="datarun.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="data-writer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fileio.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="helpers.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="index.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mft.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="network.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="path.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="processor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="settings.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="attribs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bootsector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="byte-buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="context.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="datarun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="data-writer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fileio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="helpers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="index.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="network.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mft.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="path.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="processor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="settings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ut-wrapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utarray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{6f2c4abd-301e-401e-ba7e-fc693c81cb93}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{c1bdde3e-810c-4e59-a257-325d87a95b85}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
