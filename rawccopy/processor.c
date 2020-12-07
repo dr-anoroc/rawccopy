@@ -9,7 +9,7 @@
 #include "path.h"
 
 
-#define TO_CLUST(context,bt_cnt) ((bt_cnt) / BytesPerCluster(context->boot))
+#define TO_CLUST(context,bt_cnt) (bt_cnt > 0 ? 1 + (bt_cnt - 1) / BytesPerCluster(context->boot) : 0)
 #define TO_BYTES(context,cl_cnt) ((uint64_t)(cl_cnt) * BytesPerCluster(context->boot))
 
 bool ExractTargetFile(execution_context context, const wchar_t* file_name, uint64_t mft_ref);
@@ -206,11 +206,18 @@ bool ExtractDataStream(execution_context context, const wchar_t* stream_name, co
 {
 	attribute start_at = AttributePtr(start, 0);
 	bool result = true;
+
 	if (!start_at->non_resident)
 	{
 		bytes payload = GetAttributeData(context->cr, start_at);
 		result = WriteDataToDestination(context, stream_name, payload);
 		DeleteBytes(payload);
+		return result;
+	}
+	else if (start_at->real_sz == 0)
+	{
+		bytes buf = ZeroBuffer(0);
+		WriteDataToDestination(context, stream_name, buf);
 		return result;
 	}
 
