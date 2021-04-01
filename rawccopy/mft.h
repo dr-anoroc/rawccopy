@@ -5,6 +5,7 @@
 #include "byte-buffer.h"
 #include "fileio.h"
 #include "ut-wrapper.h"
+#include "attribs.h"
 
 
 #define MASTER_FILE_TABLE_NUMBER         (0x0)   //  $Mft
@@ -19,19 +20,28 @@
 #define QUOTA_TABLE_NUMBER               (0x9)   //  $Quota
 #define UPCASE_TABLE_NUMBER              (0xa)   //  $UpCase
 
-typedef struct _mft_record *mft_record;
 
-bool SetUpMFTIndex(execution_context context);
+typedef struct _mft_file *mft_file;
 
-bool SetUppercaseList(execution_context context);
+typedef struct _attribute_reader* attribute_reader;
 
-UT_array* GetAttributes(uint32_t attributeType, const mft_record mft);
+mft_file LoadMFTFile(execution_context context, uint64_t index);
 
-mft_record AttributesForFile(execution_context context, uint64_t mft_ref, uint32_t attribute_mask);
+void DeleteMFTFile(mft_file file);
 
-wchar_t* FileNameFromMFTRec(const mft_record mft);
+attribute FirstAttribute(execution_context context, mft_file mft_rec, uint32_t attribute_mask);
 
-void DeleteMFTRecord(mft_record rec);
+attribute NextAttribute(execution_context context, mft_file mft_rec, const attribute cur, uint32_t attribute_mask);
+
+attribute_reader OpenAttributeReader(execution_context context, mft_file mft_rec, const attribute attribute);
+
+void CloseAttributeReader(attribute_reader rdr);
+
+bool AppendBytesFromAttribRdr(execution_context context, attribute_reader rdr, int64_t offset, uint64_t cnt, bytes dest, rsize_t pos);
+
+bytes GetBytesFromAttribRdr(execution_context context, attribute_reader rdr, int64_t offset, uint64_t cnt);
+
+bytes GetBytesFromAttrib(execution_context context, mft_file mft_rec, const attribute attrib, int64_t offset, uint64_t cnt);
 
 bool DoFixUp(bytes record, uint16_t sector_sz);
 

@@ -4,78 +4,67 @@
 
 #include "helpers.h"
 #include "network.h"
+#include "safe-string.h"
 
-bool ParseIPDestination(const char* address, wchar_t* ip, wchar_t* port)
+bool ParseIPDestination(const char* destination, uint32_t *ip, uint16_t* port)
 {
-	wchar_t* input_ad = ToWideString(address, 0);
-
-	wchar_t* port_part = wcspbrk(input_ad, L":");
-	if (port_part++ == 0 || !IsDigitsW(port_part) || wcstoul(port_part, NULL, 10) > 65535)
-	{
-		free(input_ad);
+	char* addr_part = strrchr(destination, ':');
+	if (!addr_part)
 		return false;
-	}
 
-	wcscpy_s(port, 20, port_part);
+	*port = (uint16_t)strtoul(addr_part + 1, NULL, 10);
+	if (*port <= 0 || *port > 0xFFFF)
+		return false;
 
-	rsize_t addr_len = port_part - input_ad - 1;
-
-	input_ad[addr_len] = 0;
-	int test_len = -1;
-	if (swscanf_s(input_ad, L"%*3l[0-9].%*3l[0-9].%*3l[0-9].%*3l[0-9]%n", &test_len) == 0 && test_len == addr_len)
-	{
-		wcscpy_s(ip, 16, input_ad);
-		free(input_ad);
-		return true;
-	}
+	char* addr_buf = calloc(addr_part - destination + 1, 1);
+	strncpy(addr_buf, destination, addr_part - destination);
 
 	WORD version_req = MAKEWORD(2, 2);
 	WSADATA wsa_data;
 
 	if (WSAStartup(version_req, &wsa_data) != 0)
-	{
-		free(input_ad);
 		return false;
-	}
 
-	ADDRINFOW hints;
-	memset(&hints, 0, sizeof(ADDRINFOW));
-	hints.ai_family = AF_INET;
+	*ip = INADDR_NONE;
+	*ip = inet_addr(addr_buf);
 
-	ADDRINFOW* name_results;
-	if (GetAddrInfoW(input_ad, NULL, &hints, &name_results) != 0)
+	bool result = *ip != INADDR_NONE && *ip != INADDR_ANY;
+
+	if (!result)
 	{
-		free(input_ad);
-		return false;
-	}
+		ADDRINFOA hints;
+		memset(&hints, 0, sizeof(ADDRINFOA));
+		hints.ai_family = AF_INET;
 
-	ADDRINFOW* res;
-	//Loop and test are not really necessary as we filtered on 'AF_INET' while
-	//searching, but it's clearer and offers some safety
-	bool success = false;
-	for (res = name_results; res; res = res->ai_next)
-	{
-		if (res->ai_family == AF_INET)
+		ADDRINFOA* name_results;
+		if (GetAddrInfoA(addr_buf, NULL, &hints, &name_results) == 0)
 		{
-			DWORD ipAddrLen = MAX_LEN;
-			if (WSAAddressToStringW((LPSOCKADDR)res->ai_addr, (DWORD)res->ai_addrlen, NULL, (wchar_t*)ip,
-				&ipAddrLen) == 0)
+			ADDRINFOA* res;
+			//Loop and test are not really necessary as we filtered on 'AF_INET' while
+			//searching, but it's clearer and offers some safety
+			for (res = name_results; res; res = res->ai_next)
 			{
-				success = true;
-				break;
+				if (res->ai_family == AF_INET)
+				{
+					#pragma warning( push )
+					#pragma warning( disable : 4133 )
+					struct in_addr* ad = res->ai_addr->sa_data + 2;
+					#pragma warning( pop )
+					*ip = ad->S_un.S_addr;
+					result = true;
+				}
 			}
+			FreeAddrInfoA(name_results);
 		}
 	}
-
-	FreeAddrInfoW(name_results);
-
 	WSACleanup();
-	free(input_ad);
-	return success;
+	free(addr_buf);
+	return result;
+
 }
 
 
-SOCKET GetConnectedSocket(const wchar_t* ip, const wchar_t* port)
+SOCKET GetConnectedSocket(uint32_t ip, uint16_t port)
 {
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	WSADATA wsa_data;
@@ -91,12 +80,10 @@ SOCKET GetConnectedSocket(const wchar_t* ip, const wchar_t* port)
 	}
 
 	struct sockaddr_in client_svc;
-	int ips[4];
-	swscanf_s(ip, L"%3d.%3d.%3d.%3d", ips, ips + 1, ips + 2, ips + 3);
 
 	client_svc.sin_family = AF_INET;
-	client_svc.sin_addr.S_un.S_addr = ((((((*(ips + 3) << 8) + *(ips + 2))) << 8) + *(ips + 1)) << 8) + *ips;
-	client_svc.sin_port = htons((uint16_t)wcstoul(port, NULL, 10));
+	client_svc.sin_addr.S_un.S_addr = ip;
+	client_svc.sin_port = htons(port);
 
 	if (connect(result, (SOCKADDR*)&client_svc, sizeof(client_svc)) == SOCKET_ERROR)
 	{
@@ -106,6 +93,7 @@ SOCKET GetConnectedSocket(const wchar_t* ip, const wchar_t* port)
 	}
 	return result;
 }
+
 
 bool SendData(SOCKET socket, const bytes data)
 {

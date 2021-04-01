@@ -4,24 +4,16 @@
 #include "fileio.h"
 
 
-struct _file_reader
-{
+struct _disk_reader {
 	HANDLE fh;
+	uint64_t offset;
+	uint16_t sector_sz;
 };
 
-struct _cluster_reader
-{
-	HANDLE fh;
-	uint64_t image_offs;
-	rsize_t cluster_sz;
-};
 
-void SetFileOffset(HANDLE fh, uint64_t offset);
-bytes BytesFromFile(HANDLE fh, uint64_t count);
-
-cluster_reader OpenClusterReader(const wchar_t* file_name, uint64_t image_offs, rsize_t cluster_sz)
+disk_reader OpenDiskReader(const string file_name, uint16_t sector_sz)
 {
-	HANDLE fh = CreateFileW(file_name, GENERIC_READ, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+	HANDLE fh = CreateFileW(BaseString(file_name), GENERIC_READ, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
 		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (fh == INVALID_HANDLE_VALUE)
 	{
@@ -31,163 +23,85 @@ cluster_reader OpenClusterReader(const wchar_t* file_name, uint64_t image_offs, 
 		return NULL;
 	}
 
-	SafeCreate(result, cluster_reader);
+	SafeCreate(result, disk_reader);
 	result->fh = fh;
-	result->cluster_sz = cluster_sz;
-	result->image_offs = image_offs;
-	return result;
-}
-
-void CloseClusterReader(cluster_reader cr)
-{
-	CloseHandle(cr->fh);
-	free(cr);
-}
-
-rsize_t ClusterSize(const cluster_reader cr)
-{
-	return cr->cluster_sz;
-}
-
-bytes ReadClusters(const cluster_reader cr, uint32_t cluster_offs, uint32_t cluster_cnt)
-{
-	SetNextCluster(cr, cluster_offs);
-
-	return ReadNextClusters(cr, cluster_cnt);
-}
-
-bytes ReadNextClusters(const cluster_reader cr, uint32_t cluster_cnt)
-{
-	bytes result = CreateBytes(cluster_cnt * cr->cluster_sz);
-	if (!result)
-		return NULL;
-
-	if (!ReadNextClustersIn(cr, cluster_cnt, result))
-		return ErrorCleanUp(DeleteBytes, result, "");
+	result->offset = 0;
+	result->sector_sz = sector_sz;
 
 	return result;
 }
 
-bool ReadNextClustersIn(const cluster_reader cr, uint32_t cluster_cnt, bytes dst)
+void CloseDiskReader(disk_reader dr)
 {
-	Reserve(dst, cluster_cnt * cr->cluster_sz);
-	RightTrim(dst, dst->buffer_len - cluster_cnt * cr->cluster_sz);
-	DWORD byte_cnt = 0;
-	return ReadFile(cr->fh, dst->buffer, (DWORD)dst->buffer_len, &byte_cnt, NULL) && byte_cnt == dst->buffer_len;
+	free(dr);
 }
 
-bool ReadClustersIn(const cluster_reader cr, uint64_t cluster_offs, uint32_t cluster_cnt, bytes dst)
+bool AppendBytesFromDiskRdr(disk_reader dr, int64_t offset, uint64_t cnt, bytes dest, uint64_t pos)
 {
-	SetNextCluster(cr, cluster_offs);
-	return ReadNextClustersIn(cr, cluster_cnt, dst);
-}
+	if (offset < 0)
+		offset = dr->offset;
 
-void SetNextCluster(const cluster_reader cr, uint64_t cluster_offs)
-{
-	SetFileOffset(cr->fh, cr->image_offs + cluster_offs * cr->cluster_sz);
-}
+	//There are several alignment constraints to protect against.
+	//First at the left side (where we start reading):
+	// * this should be sector aligned (within the file)
+	// * it can only be written to even memory locations
+	//If either of these two is not met, we first read the whole thing (!) 
+	//in a temporary buffer and copy that back in dest.
+	//The copying is heavy a penalty for calling the function
+	//with non aligned parameters
 
-bytes ReadImageBytes(const cluster_reader cr, uint64_t byte_offs, uint64_t byte_cnt)
-{
+	uint64_t al_offset = offset - (offset % dr->sector_sz);
+	//At the right side, ie where we stop reading, we must also be sector
+	//aligned, ie we can only read complete sectors:
+	uint64_t al_cnt = ((cnt + offset + dr->sector_sz - 1) / dr->sector_sz) * dr->sector_sz - al_offset;
 
-	SetFileOffset(cr->fh, cr->image_offs + byte_offs);
-
-	return BytesFromFile(cr->fh, byte_cnt);
-}
-
-
-file_reader OpenFileReader(const wchar_t* file_name)
-{
-	HANDLE fh = CreateFileW(file_name, GENERIC_READ, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
-										NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (fh == INVALID_HANDLE_VALUE)
+	if (al_offset != offset || ((uint64_t)dest->buffer + pos) & 1ULL)
 	{
-		wchar_t buffer[5000];
-		FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, buffer, 5000, NULL);
-		wprintf(L"Create File Error: %ls\n", buffer);
-		return NULL;
+		//In the recursion, this call will not come here, because it can create
+		//it's own buffer, and reading is sector aligned aligned
+		bytes al_buf = GetBytesFromDiskRdr(dr, al_offset, al_cnt);
+		if (al_buf)
+		{
+			AppendAt(dest, (rsize_t)pos, al_buf, (rsize_t)(offset - al_offset), (rsize_t)cnt);
+			DeleteBytes(al_buf);
+			return true;
+		}
+		else
+			return false;
 	}
 
-	SafeCreate(result, file_reader);
-	result->fh = fh;
-	return result;
-}
 
+	if (offset != dr->offset)
+	{
+		uint32_t low = offset & 0x0000000000FFFFFFFF;
+		uint32_t high = offset >> 32;
+		SetFilePointer(dr->fh, low, &high, FILE_BEGIN);
+	}
 
-void CloseFileReader(file_reader fr)
-{
-	CloseHandle(fr->fh);
-	free(fr);
-}
-
-
-void SetOffset(const file_reader fr, uint64_t offset)
-{
-	SetFileOffset(fr->fh, offset);
-}
-
-bytes ReadNextBytes(const file_reader fr, uint64_t byte_cnt)
-{
-	return BytesFromFile(fr->fh, byte_cnt);
-}
-
-bytes ReadBytes(const file_reader fr, uint64_t offset, uint64_t byte_cnt)
-{
-	SetOffset(fr, offset);
-	return ReadNextBytes(fr, byte_cnt);
-}
-
-bytes ReadBytesFromFile(const wchar_t* file_name, uint64_t offset, uint64_t byte_cnt)
-{
-	file_reader fr = OpenFileReader(file_name);
-	if (!fr)
-		return NULL;
-	SetOffset(fr, offset);
-	bytes result = ReadNextBytes(fr, byte_cnt);
-	CloseFileReader(fr);
-	return result;
-}
-
-bool ReadNextBytesIn(bytes dest, const file_reader fr, uint64_t byte_cnt)
-{
-	if (dest->buffer_len < byte_cnt)
-		ErrorExit("Not enough space in byte buffer", -1);
+	if (!Reserve(dest, (rsize_t)pos + (rsize_t)al_cnt))
+		return false;
 
 	DWORD bytes_read = 0;
-	return (ReadFile(fr->fh, dest->buffer, (DWORD)byte_cnt, &bytes_read, NULL) && bytes_read == byte_cnt);
+	if (ReadFile(dr->fh, dest->buffer + pos, (DWORD)al_cnt, &bytes_read, NULL) && bytes_read == al_cnt)
+	{
+		RightTrim(dest, dest->buffer_len - (rsize_t)(pos + cnt));
+		dr->offset = offset + cnt;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
-bool ReadBytesIn(bytes dest, const file_reader fr, uint64_t offset, uint64_t byte_cnt)
-{
-	SetOffset(fr, offset);
-	return ReadNextBytesIn(dest, fr, byte_cnt);
-}
-
-void SetFileOffset(HANDLE fh, uint64_t offset)
-{
-	uint32_t low = offset & 0x0000000000FFFFFFFF;
-	uint32_t high = offset >> 32;
-	SetFilePointer(fh, low, &high, FILE_BEGIN);
-}
-
-bytes BytesFromFile(HANDLE fh, uint64_t num_bytes)
+bytes GetBytesFromDiskRdr(disk_reader dr, int64_t offset, uint64_t cnt)
 {
 	bytes result = CreateEmpty();
 	if (!result)
 		return NULL;
 
-	while (num_bytes > 0)
-	{
-		uint32_t to_read = (uint32_t)min(num_bytes, MAXUINT32);
-		if (!Reserve(result, result->buffer_len + to_read))
-			return ErrorCleanUp(DeleteBytes, result, "");
+	if (!AppendBytesFromDiskRdr(dr, offset, cnt, result, 0))
+		return ErrorCleanUp(DeleteBytes, result, "");
 
-		DWORD byte_cnt = 0;
-		if (!ReadFile(fh, result->buffer + result->buffer_len - to_read, (DWORD)to_read, &byte_cnt, NULL) ||
-			byte_cnt != to_read)
-			return ErrorCleanUp(DeleteBytes, result, "");
-
-		num_bytes -= to_read;
-	}
 	return result;
 }

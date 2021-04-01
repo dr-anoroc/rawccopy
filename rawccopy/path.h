@@ -16,7 +16,7 @@ typedef struct {
 
 typedef UT_array* resolved_path;
 
-bool TryParsePath(const execution_context context, const wchar_t* path, resolved_path *result);
+bool TryParsePath(execution_context context, const wchar_t* path, resolved_path *result);
 
 resolved_path CopyPath(const resolved_path pt);
 
@@ -24,7 +24,7 @@ inline void DeletePath(resolved_path pt) { utarray_free(pt);}
 
 resolved_path EmptyPath(const execution_context context);
 
-bool GoDown(const execution_context context, resolved_path pt, const wchar_t* item);
+bool GoDown(execution_context context, resolved_path pt, const wchar_t* item);
 
 bool GoUp(resolved_path pt);
 

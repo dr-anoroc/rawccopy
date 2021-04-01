@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "context.h"
+#include "safe-string.h"
 
 #define FILE_ATTR_READONLY (0x00000001)
 #define FILE_ATTR_HIDDEN (0x00000002)
@@ -42,7 +43,7 @@
 
 
 #pragma pack (push, 1)
-struct _index_entry {
+typedef struct _index_entry {
 	/*0x00*/ uint64_t mft_reference;		/* MFT Reference of the file */
 	/*0x08*/ uint16_t entry_size;           /* Size of this index entry */
 	/*0x0a*/ uint16_t filename_offs;		/* Offset to the filename */
@@ -61,34 +62,31 @@ struct _index_entry {
 	/*0x52*/ uint8_t filename[1];
 	//There is actually some stuff after the filename, but it is not possible to
 	//include this in the struct, since the filename is variable length
-};
+}* index_entry;
 #pragma pack(pop)
-typedef struct _index_entry* index_entry;
 
 #define IndexEntryPtr(buf) ((index_entry)(buf->buffer))
-
-struct _index_iter;
-typedef struct _index_iter* index_iter;
 
 typedef struct {
 	bytes original;
 	bytes dereferenced;
 } *resolved_index;
 
-index_iter StartIndexIterator(const execution_context context, const index_entry root);
+typedef struct _index_iter *index_iter;
 
-index_entry CurrentIterEntry(const index_iter iter);
-
-index_entry NextIterEntry(index_iter iter);
-
-uint64_t SubNodeEntry(const index_entry rec);
+index_iter StartIndexIterator(execution_context context, const index_entry root);
 
 void CloseIndexIterator(index_iter iter);
 
-wchar_t* FileNameFromIndex(const index_entry rec);
+index_entry CurrentIterEntry(const index_iter iter);
 
-wchar_t* FileFlagsFromIndexRec(const index_entry rec);
+index_entry NextIterEntry(execution_context context, index_iter iter);
 
-bytes FindIndexEntry(const execution_context context, uint64_t parent_mft, const wchar_t* name);
+uint64_t SubNodeEntry(const index_entry rec);
+
+bool FileFlagsFromIndexRec(const index_entry rec, string dest);
+
+bytes FindIndexEntry(execution_context context, uint64_t parent_mft, const wchar_t* name);
+
 
 #endif INDEX_H

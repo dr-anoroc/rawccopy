@@ -155,11 +155,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="attribs.h" />
-    <ClInclude Include="bootsector.h" />
+    <ClInclude Include="disk-info.h" />
     <ClInclude Include="byte-buffer.h" />
     <ClInclude Include="context.h" />
     <ClInclude Include="data-writer.h" />
-    <ClInclude Include="datarun.h" />
     <ClInclude Include="fileio.h" />
     <ClInclude Include="helpers.h" />
     <ClInclude Include="index.h" />
@@ -167,17 +166,18 @@
     <ClInclude Include="network.h" />
     <ClInclude Include="path.h" />
     <ClInclude Include="processor.h" />
+    <ClInclude Include="regex.h" />
+    <ClInclude Include="safe-string.h" />
     <ClInclude Include="settings.h" />
     <ClInclude Include="ut-wrapper.h" />
     <ClInclude Include="utarray.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="attribs.c" />
-    <ClCompile Include="bootsector.c" />
+    <ClCompile Include="disk-info.c" />
     <ClCompile Include="byte-buffer.c" />
     <ClCompile Include="context.c" />
     <ClCompile Include="data-writer.c" />
-    <ClCompile Include="datarun.c" />
     <ClCompile Include="fileio.c" />
     <ClCompile Include="helpers.c" />
     <ClCompile Include="index.c" />
@@ -186,6 +186,8 @@
     <ClCompile Include="network.c" />
     <ClCompile Include="path.c" />
     <ClCompile Include="processor.c" />
+    <ClCompile Include="regex.c" />
+    <ClCompile Include="safe-string.c" />
     <ClCompile Include="settings.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

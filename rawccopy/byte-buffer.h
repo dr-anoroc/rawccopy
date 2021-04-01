@@ -14,9 +14,7 @@ typedef struct _bytes
 	rsize_t buffer_len;
 } *bytes;
 
-typedef struct _bytes* bytes;
-
-unsigned char Byte(const bytes from, rsize_t index);
+#define TYPE_CAST(buf, type) ((type)(((bytes)(buf))->buffer))
 
 void Append(bytes first, const bytes second, rsize_t offset, rsize_t count);
 
@@ -26,19 +24,9 @@ void RightTrim(bytes buf, size_t count);
 
 void Patch(bytes dest, rsize_t offset1, const bytes second, rsize_t offset2, rsize_t count);
 
-uint64_t ReadNumber(const bytes from, rsize_t offset, rsize_t count);
-
-int64_t ReadSignedNumber(const bytes from, rsize_t offset, rsize_t count);
+void SetBytes(bytes dest, uint8_t val, rsize_t offset, rsize_t count);
 
 bool Equals(const bytes first, rsize_t offset1, const bytes second, rsize_t offset2, rsize_t count);
-
-bool EqualsBuffer(const bytes first, rsize_t offset, const unsigned char* second, rsize_t count);
-
-bool Same(const bytes buf, rsize_t offset, unsigned char value, rsize_t count);
-
-wchar_t* ToString(const bytes buf);
-
-void WriteToFile(FILE *f, const bytes buf);
 
 bytes CreateBytes(rsize_t length);
 
@@ -54,8 +42,9 @@ bool Reserve(bytes buf, rsize_t count);
 
 void DeleteBytes(bytes buf);
 
-UT_array* CreateBufferList();
-
-void AppendBuffer(UT_array* bufferList, const bytes src, rsize_t offset, rsize_t count);
+//Creates an ut_array that contains byte buffers
+//The buffers are fully owned by the array, sho should not be freed
+//individually
+UT_array* ListOfBuffers();
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef ATTRIBS_H
 #define ATTRIBS_H
 
+#include "context.h"
 #include "helpers.h"
 #include "byte-buffer.h"
 #include "fileio.h"
@@ -34,7 +35,7 @@
 #define AttrTypeFlag(type) (uint32_t)(1 << (AttrTypeToIndex(type)))
 
 #pragma pack (push, 1)
-struct _attribute {
+typedef struct _attribute {
 	/*Ofs*/
 	/*  0*/	uint32_t type;			// The (32-bit) type of the attribute. 
 	/*  4*/	uint32_t length;		// Byte size of the resident part of the
@@ -107,32 +108,95 @@ struct _attribute {
 														// of disk space being used on the disk.
 		};
 	};
-};
+}* attribute;
 #pragma pack(pop)
 
-typedef struct _attribute* attribute;
+#pragma pack (push, 1)
+typedef struct _file_name_attribute {
+	/*  0*/	uint64_t parent_directory;			/* Directory this filename is referenced from. */
+	/*  8*/	uint64_t creation_time;				/* Time file was created. */
+	/* 10*/	uint64_t last_data_change_time;		/* Time the data attribute was last modified. */
+	/* 18*/	uint64_t last_mft_change_time;		/* Time this mft record was last modified. */
+	/* 20*/	uint64_t last_access_time;			/* Time this mft record was last accessed. */
+	/* 28*/	uint64_t allocated_size;			/* Byte size of on-disk allocated space for the unnamed data attribute. */
+	/* 30*/	uint64_t data_size;					/* Byte size of actual data in unname data attribute.  For a directory or
+												   other inode without an unnamed $DATA attribute, this is always 0. */
+	/* 38*/	uint32_t file_attributes;			/* Flags describing the file. */
+	/* 3c*/	union {
+		/* 3c*/	struct {
+			/* 3c*/	uint16_t packed_ea_size;		/* Size of the buffer needed to pack the extended attributes
+													   (EAs), if such are present.*/
+			/* 3e*/	uint16_t reserved;				/* Reserved for alignment. */
+		};
+		/* 3c*/	struct {
+			/* 3c*/	uint32_t reparse_point_tag;		/* Type of reparse point, present only in reparse points and only
+													   if there are no EAs. */
+		};
+	};
+	/* 40*/	uint8_t file_name_length;				/* Length of file name in (Unicode) characters. */
+	/* 41*/	uint8_t name_space;						/* Namespace of the file name. */
+	/* 42*/	uint8_t file_name[0];					/* File name in Unicode. */
+} *file_name_attribute;
+#pragma pack(pop)
 
-typedef struct _file_name_attribute* file_name_attribute;
 
+
+#pragma pack (push, 1)
+typedef struct _at_list_entry {
+	/*Ofs*/
+	/*  0*/	uint32_t type;				// Type of referenced attribute. 
+	/*  4*/	uint16_t length;			// Byte size of this entry (8-byte aligned). 
+	/*  6*/	uint8_t  name_len;			// Size in Unicode chars of the name of the
+										// attribute or 0 if unnamed.
+	/*  7*/	uint8_t name_offs;			// Byte offset to beginning of attribute name 
+	/*  8*/	int64_t start_vcn;			// Lowest virtual cluster number of this portion
+										// of the attribute value. This is usually 0.
+	/* 16*/	uint64_t mft_ref;			// The reference of the mft record holding
+										// the ATTR_RECORD for this portion of the
+										// attribute value.
+	/* 24*/	uint16_t attr_id;			// If start_vcn = 0, the instance of the
+										// attribute being referenced; otherwise 0.
+	/* 26*/	uint8_t name[0];
+}*at_list_entry;
+#pragma pack(pop)
+
+#define AttributeSize(attrib) (uint64_t) (((attribute)(attrib))->non_resident ? ((attribute)(attrib))->real_sz : ((attribute)(attrib))->value_len) 
+#define AttributeName(attrib) (wchar_t*)((uint8_t*)(attrib)+((attribute)(attrib))->name_offs)
+#define AttributeNameLen(attrib) (rsize_t)((attribute)(attrib)->name_len)
+#define IsEntryOf(entry, attrib) (bool)(((at_list_entry)(entry))->type == ((attribute)(attrib))->type && \
+			((at_list_entry)(entry))->name_len == AttributeNameLen(attrib) && \
+			!wcsncmp((wchar_t*)((at_list_entry)(entry))->name, AttributeName(attrib), ((at_list_entry)(entry))->name_len))
+
+#define IsExtentOf(extent, attrib) (bool)(((attribute)(extent))->type == ((attribute)(attrib))->type && \
+			AttributeNameLen(extent) == AttributeNameLen(attrib) && \
+			!wcsncmp(AttributeName(extent), AttributeName(attrib), AttributeNameLen(extent)))
+
+typedef struct _run_list_iterator {
+	uint8_t* next_index;		// the position (in bytes) of the next pair in the run list
+	bool end_of_runs;			// flag that signals the end of the runs
+	uint64_t cur_vcn;			// current vcn, as defined in decompression algorithm
+	uint64_t next_vcn;			// next vcn, as defined in decompression algorithm
+	uint64_t cur_lcn;			// current lcn, this is calculated, if it is zero, indicates empty clusters
+	uint64_t prev_lcn;			// previous lcn, used for calculating cur_lcn
+} *run_list_iterator;
 
 
 #define ATTR_IS_COMPRESSED 0x0001
 #define ATTR_IS_SPARSE 0x8000
 
-wchar_t* AttributeTypeName(uint32_t type);
 
-attribute AttributePtr(bytes buf, size_t offset);
+wchar_t* type_names[];
 
-wchar_t* GetAttributeName(attribute attrib);
+#define AttributeTypeName(type) (type_names[AttrTypeToIndex((uint32_t)(type))])
 
-bytes GetAttributeData(cluster_reader cr, attribute attrib);
+const wchar_t* namespaces[];
 
-UT_array* GetAttributeListRecords(cluster_reader cr, uint64_t file_ref, const attribute attrib);
+#define NameSpaceLabel(ns) namespaces[(uint8_t)(ns)]
 
-wchar_t* NameFromNameAttr(attribute name_attr);
+run_list_iterator StartRunListIterator(const attribute attrib);
 
-uint8_t NameSpaceFromNameAttr(attribute name_attr);
+bool NextRun(run_list_iterator iter);
 
-const wchar_t* NameSpaceLabel(uint8_t ns);
+void CloseRunListIterator(run_list_iterator iter);
 
 #endif ATTRIBS_H

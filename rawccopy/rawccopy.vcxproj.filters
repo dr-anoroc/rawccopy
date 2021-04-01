@@ -4,16 +4,10 @@
     <ClCompile Include="attribs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="bootsector.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="byte-buffer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="context.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="datarun.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="data-writer.c">
@@ -46,21 +40,24 @@
     <ClCompile Include="settings.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="safe-string.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="disk-info.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="regex.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="attribs.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="bootsector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="byte-buffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="context.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="datarun.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="data-writer.h">
@@ -81,9 +78,6 @@
     <ClInclude Include="mft.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="path.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="processor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -94,6 +88,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="utarray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="safe-string.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="path.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="disk-info.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="regex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

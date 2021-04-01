@@ -2,14 +2,13 @@
 #define DATA_WRITER_H
 
 #include "byte-buffer.h"
+#include "safe-string.h"
 
 typedef struct _data_writer* data_writer;
 
-data_writer TCPWriter(const wchar_t *ip, const wchar_t *port);
+data_writer TCPWriter(uint32_t ip, uint16_t port);
 
-data_writer FileWriter(const wchar_t* file_name);
-
-wchar_t* CurrentFileName(const data_writer writer);
+data_writer FileWriter(const string file_name);
 
 void CloseDataWriter(data_writer writer);
 

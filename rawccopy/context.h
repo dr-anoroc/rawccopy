@@ -1,31 +1,28 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#define _CRTDBG_MAP_ALLOC
-#include <stdlib.h>
-#include <crtdbg.h>
-
 #include "settings.h"
-#include "bootsector.h"
+#include "disk-info.h"
 #include "fileio.h"
 #include "data-writer.h"
 #include "ut-wrapper.h"
 
-struct _execution_context
+typedef struct _mft_file* mft_file;
+
+typedef struct _execution_context
 {
 	settings parameters;
 	boot_sector boot;
-	UT_array* mft_index;
-	cluster_reader cr;
+	uint32_t cluster_sz;
+	uint32_t mft_record_sz;
+	mft_file mft_table;
+	disk_reader dr;
 	data_writer writer;
 	wchar_t *upper_case;
-};
+}*execution_context;
 
-typedef struct _execution_context* execution_context;
 
 execution_context SetupContext(int argc, char* argv[]);
-
-bool WriteDataToDestination(execution_context context, const wchar_t* file, const bytes data);
 
 void CleanUp(execution_context context);
 

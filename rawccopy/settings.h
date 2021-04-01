@@ -7,26 +7,23 @@
 #include "Shlwapi.h"
 
 #include "helpers.h"
+#include "safe-string.h"
 
-struct _settings {
-	bool is_phys_drv;
+typedef struct _settings {
 	bool is_image;
 	bool tcp_send;
-	wchar_t ip_addr[MAX_LEN];
-	wchar_t tcp_port[MAX_LEN];
-	bool is_folder;
+	uint32_t ip_address;
+	uint16_t tcp_port;
 	unsigned int detail_mode;
 	bool write_boot_info;
 	bool all_attribs;
-	wchar_t *output_file;
-	wchar_t *output_folder;
-	wchar_t *target_path;
-	wchar_t *target_drive;
+	string output_file;
+	string output_folder;
+	string source_path;
+	string source_drive;
 	uint64_t image_offs;
-	unsigned int* mft_ref;
-};
-
-typedef struct _settings* settings;
+	uint64_t* mft_ref;
+} *settings;
 
 settings Parse(int argc, char* argv[]);
 

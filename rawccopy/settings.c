@@ -3,38 +3,18 @@
 #include <string.h>
 #include <wchar.h>
 
-
+#include "safe-string.h"
+#include "disk-info.h"
 #include "Shlwapi.h"
 #include "ut-wrapper.h"
 #include "settings.h"
 #include "fileio.h"
 #include "helpers.h"
 #include "network.h"
-
-typedef struct _volume
-{
-	wchar_t *type;
-	uint64_t offset;
-	uint64_t size;
-} volume;
+#include "regex.h"
 
 
 void PrintHelp();
-bool SetUpImageFile(const uint64_t vol_index, settings set);
-UT_array *CheckMBR(const wchar_t* image_file);
-void CheckGPT(const file_reader fr, const wchar_t* image_file, UT_array* list);
-void CheckExtendedPartition(const file_reader fr, uint64_t offset, const wchar_t* image_file, UT_array* list);
-bool TestNTFS(const file_reader fr, uint64_t start_sector, UT_array* list, const wchar_t* image_file);
-bool HasNTFS(const UT_array* list);
-
-void AddVolume(UT_array* list, const wchar_t* type, uint64_t offset, uint64_t size);
-
-wchar_t* EnsurePrefix(wchar_t* path);
-
-
-void DeleteVol(volume* vol);
-
-static const UT_icd volume_icd = { sizeof(volume), NULL, NULL, DeleteVol };
 
 settings Parse(int argc, char* argv[])
 {
@@ -50,24 +30,24 @@ settings Parse(int argc, char* argv[])
 
 	for (int i = 1; i < argc; ++i)
 	{
-		if (!strncmp_nocase(argv[i], "/FileNamePath:", 14))
-			file_name_path = argv[i] + 14;
-		else if (!strncmp_nocase(argv[i], "/OutputPath:",12))
-			out_path = argv[i] + 12;
-		else if (!strncmp_nocase(argv[i], "/AllAttr:",9))
-			all_attr = argv[i] + 9;
-		else if (!strncmp_nocase(argv[i], "/ImageFile:", 11))
-			image_file = argv[i] + 11;
-		else if (!strncmp_nocase(argv[i], "/ImageVolume:", 13))
-			image_volume = argv[i] + 13;
-		else if (!strncmp_nocase(argv[i], "/RawDirMode:", 12))
-			raw_dir_mode = argv[i] + 12;
-		else if (!strncmp_nocase(argv[i], "/WriteFSInfo:", 13))
-			write_fs_info = argv[i] + 13;
-		else if (!strncmp_nocase(argv[i], "/OutputName:", 12))
-			out_name = argv[i] + 12;
-		else if (!strncmp_nocase(argv[i], "/TcpSend:", 9))
-			tcp_send = argv[i] + 9;
+		if (!file_name_path && match("/FileNamePath:", argv[i], &file_name_path))
+			continue;
+		if (!out_path && match("/OutputPath:", argv[i], &out_path))
+			continue;
+		if (!all_attr && match("/AllAttr:", argv[i], &all_attr))
+			continue;
+		if (!image_file && match("/ImageFile:", argv[i], &image_file))
+			continue;
+		if (!image_volume && match("/ImageVolume:", argv[i], &image_volume))
+			continue;
+		if (!raw_dir_mode && match("/RawDirMode:", argv[i], &raw_dir_mode))
+			continue;
+		if (!write_fs_info && match("/WriteFSInfo:", argv[i], &write_fs_info))
+			continue;
+		if (!out_name && match("/OutputName:", argv[i], &out_name))
+			continue;
+		if (!tcp_send && match("/TcpSend:", argv[i], &tcp_send))
+			continue;
 	}
 
 	SafeCreate(result, settings);
@@ -79,43 +59,31 @@ settings Parse(int argc, char* argv[])
 	{
 		if (result->tcp_send)
 		{
-			if (!ParseIPDestination(out_path, result->ip_addr, result->tcp_port))
-				ErrorExit("Error: Configuration of TcpSend failed.\n", -1);
+			if (!ParseIPDestination(out_path, &result->ip_address, &result->tcp_port))
+				return ErrorCleanUp(DeleteSettings, result, "Error: Configuration of TcpSend failed.\n");
 		}
 		else if (PathFileExistsA(out_path))
-			result->output_folder = ToWideString(out_path, 0);
+			result->output_folder = StringPrint(NULL, 0, L"%hs", out_path);
 	}
-	if (!result->output_folder || !*result->output_folder)
-	{
-		SafePtrBlock(buffer, wchar_t*, MAX_NTFS_PATH);
-			
-		DWORD cnt = GetModuleFileNameW(NULL, buffer, (DWORD)MAX_NTFS_PATH - 1);
-
-		wchar_t* file_pt = wcsrchr(buffer, L'\\');
-		if (!file_pt)
-			ErrorExit("Invalid output path.\n", -1);
-		else
-		{
-			*file_pt = 0;
-			result->output_folder = buffer;
-		}
-	}
+	if (!result->output_folder && !(result->output_folder = ExecutablePath()))
+		return ErrorCleanUp(DeleteSettings, result, "Invalid output path.\n");
 
 	if (out_name && *out_name)
 	{
-		result->output_file = ToWideString(out_name, 0);
-		wchar_t* left_pt = wcsrchr(result->output_file, L'\\');
-		wchar_t* write = result->output_file;
-		wchar_t* scan = left_pt ? left_pt + 1 : write;
-		for (; ; ++scan)
+		unsigned char* fn = strrchr(out_name, '\\');
+		if (!fn)
+			fn = out_name;
+		
+		result->output_file = NewString();
+		const char* sep = "\\:*?\"\"<>";
+
+		char* pt = out_name;
+		for (char *next = strpbrk(pt, sep); next; next = strpbrk(pt, sep))
 		{
-			wchar_t* next = wcspbrk(scan, L"\\:*?\"\"<>");
-			if (next == NULL)
-				break;
-			for (;scan < next; ++scan)
-				*write++ = *scan;
+			StringPrint(result->output_file, StringLen(result->output_file), L"%.*hs", next - pt, pt);
+			pt = next + strspn(next, sep);
 		}
-		do 	{ *write++ = *scan;	} while (*scan++);
+		StringPrint(result->output_file, StringLen(result->output_file), L"%hs", pt);
 	}
 
 	if (all_attr && *all_attr)
@@ -143,7 +111,7 @@ settings Parse(int argc, char* argv[])
 			PrintHelp();
 			return NULL;
 		}
-
+		
 	}
 
 	result->write_boot_info = false;
@@ -160,317 +128,119 @@ settings Parse(int argc, char* argv[])
 		if (!PathFileExistsA(image_file))
 			return ErrorCleanUp(DeleteSettings, result, "Error: Image file not found: %s\n", image_file);
 		
-		StringAssign(result->target_drive, ToWideString(image_file, 0));
-		if (!SetUpImageFile(image_vol, result))
+		result->source_drive = StringPrint(NULL, 0, L"%ls%hs", strncmp(image_file, "\\\\.\\", 4) ? L"\\\\.\\" : L"", image_file);
+		if (!VerifyVolumeInfo(result->source_drive, image_vol, &result->image_offs))
 			return ErrorCleanUp(DeleteSettings, result, "");
+
+		result->is_image = true;
 	}
 
 	if (!file_name_path || !*file_name_path)
 	{
-		return ErrorCleanUp(DeleteSettings, result, "Error: FileNamePath param not specified.\n");
+		return ErrorCleanUp(DeleteSettings, result, "Error: FileNamePath parameter not specified.\n");
 	}
 
-	char* pt1;
-	char* pt2;
-	char* pt3;
+	char* tail = NULL;
 
-	if (LazyParse(file_name_path, "Harddisk", &pt1, "Partition", &pt2, ":", &pt3, NULL))
+	bool physical_drive = match("Harddisk\\d\\d*Partition\\d\\d*:", file_name_path, &tail) ||
+		match("HarddiskVolume\\d\\d*:", file_name_path, &tail) ||
+		match("HarddiskVolumeShadowCopy\\d\\d*:", file_name_path, &tail);
+
+	if (!physical_drive && match("PhysicalDrive\\d\\d*:", file_name_path, &tail))
 	{
-		result->is_phys_drv = (pt2 - pt1 - 8 == 1 && isdigit(*(pt2 - 1)) && pt3 - pt2 - 9 == 1 && isdigit(*(pt3 - 1)));
+		// Arriving here, means that we have something like 'PhysicalDrive[XYZ]:file'
+		// In the "normal" case [XYZ] would simply be a number, eg 'PhysicalDrive1:\file'
+		// Original rawcopy also accepts other cases, but treats them as images
+		physical_drive = true;
+
+		string image = StringPrint(NULL, 0, L"%ls%.*hs", strncmp(file_name_path, "\\\\.\\", 4) ? L"\\\\.\\" : L"",
+			(size_t)(tail - file_name_path - 1), file_name_path);
+		uint64_t vol_offset;
+		wchar_t* vol = BaseString(image);
+		if (!VerifyVolumeInfo(image, image_vol, &vol_offset))
+		{
+			DeleteString(image);
+			return ErrorCleanUp(DeleteSettings, result, "Error: No NTFS found on physical drive.\n");
+		}
+		if (result->source_drive)
+			DeleteString(result->source_drive);
+		result->source_drive = image;
+		result->image_offs = vol_offset;
 	}
 
-	if (LazyParse(file_name_path, "PhysicalDrive", &pt1, ":", &pt2, NULL))
+	if (physical_drive)
 	{
-		result->is_phys_drv = (pt2 - pt1 - 13 == 1 && isdigit(*(pt2 - 1)));
-
-		result->target_drive = ToWideString(file_name_path, (size_t)(pt2 - file_name_path));
-
-		//if it's not physical it must be a file, so verify that it exists and handle it
-		//as an image, sort of...
-		if (!result->is_phys_drv && !PathFileExistsW(result->target_drive))
-		{
-			return ErrorCleanUp(DeleteSettings, result, "Error: Image file not found: %s\n", result->target_drive);
-		}
-		else if (!SetUpImageFile(image_vol, result))
-		{
-			return ErrorCleanUp(DeleteSettings, result, "");
-		}
-		//Very strange, but it's like that in the original code:
+		//It's a validated physical drive
+		//Not much to do, just set source_drive (if needed) and one of 'mft_ref' or 'source path'
 		result->is_image = false;
-		StringAssign(result->target_drive, ToWideString(file_name_path, 0));
-	}
 
-	if (LazyParse(file_name_path, "HarddiskVolume", &pt1, ":", &pt2, NULL))
-	{
-		result->is_phys_drv = (pt2 - pt1 - 14 == 1 && isdigit(*(pt2 - 1)));
-	}
+		if (!result->source_drive)
+			result->source_drive = StringPrint(NULL, 0, L"%ls%.*hs", strncmp(file_name_path, "\\\\.\\", 4) ? L"\\\\.\\" : L"",
+				(size_t)(tail - file_name_path - 1), file_name_path);
 
-	if (LazyParse(file_name_path, "HarddiskVolumeShadowCopy", &pt1, ":", &pt2, NULL))
-	{
-		result->is_phys_drv = (pt2 - pt1 - 24 == 1 && isdigit(*(pt2 - 1)));
-	}
-
-	if (result->is_phys_drv)
-	{
-		LazyParse(file_name_path, ":", &pt1, NULL);
-		StringAssign(result->target_drive, ToWideString(file_name_path, (size_t)(pt1 - file_name_path)));
-
-		if (IsDigits(++pt1))
+		if (IsDigits(tail))
 		{
-			SafeAlloc(result->mft_ref,1);
-			*(result->mft_ref) = strtoul(pt1, NULL, 10);
+			SafeAlloc(result->mft_ref, 1);
+			*(result->mft_ref) = strtoul(tail, NULL, 10);
 		}
 		else
-			result->target_path = ToWideString(pt1, 0);
+			result->source_path = StringPrint(NULL, 0, L"%hs", tail);
 	}
+	else if (result->is_image && IsDigits(file_name_path + 2))
+	{
+		// Not a physical drive and a valid image: file_name_path should give
+		// us either a path or an mft reference, which is a simple number, as
+		// tested above
+		SafeAlloc(result->mft_ref, 1);
+		*(result->mft_ref) = strtoul(file_name_path + 2, NULL, 10);
+	}
+	else if (result->is_image)
+	{
+		// Not a physical drive and a valid image: file_name_path should give
+		// a path.
+		// So it should be 'FileNamePath:x:\...\...\...', in which we ignore
+		// the 'x'
+		// We do accpet 'FileNamePath:\...\...\...', which we'll patch up ourselves,
+		// all the rest triggers an error, but not the original rawcopy error message.
+		if (file_name_path[1] != ':' && file_name_path[0] != '\\')
+			return ErrorCleanUp(DeleteSettings, result, "Incorrectly formatted file name path: %s\n", file_name_path);
+
+		result->source_path = StringPrint(NULL, 0, L"%ls%hs", file_name_path[0] == '\\' ? L"x:" : L"", file_name_path);
+	}
+	else if (PathFileExistsA(file_name_path))
+	{
+		// This is the 'most normal' case: copy an existing file with the full path
+		// specified, // ie '/FileNamePath:d:\...\...\...'
+		// All we need to do is split 'file_name_path' in the drive part and the path
+		result->source_drive = StringPrint(NULL, 0, L"%ls%.2hs", strncmp(file_name_path, "\\\\.\\", 4) ? L"\\\\.\\" : L"",
+											file_name_path);
+		result->source_path = StringPrint(NULL, 0, L"%hs", file_name_path);
+	}
+	else if (file_name_path[1] == ':' && IsDigits(file_name_path + 2))
+	{
+		// File not found, but it's the "mft reference scenario"
+		// All we need to do is split 'file_name_path' in the drive part and the path
+		result->source_drive = StringPrint(NULL, 0, L"%ls%.2hs", strncmp(file_name_path, "\\\\.\\", 4) ? L"\\\\.\\" : L"",
+			file_name_path);
+		SafeAlloc(result->mft_ref, 1);
+		*(result->mft_ref) = strtoul(file_name_path + 2, NULL, 10);
+	}
+	else if (file_name_path[1] != ':')
+		//Don't know what this is; in any case it's messed up:
+		return ErrorCleanUp(DeleteSettings, result, "Incorrectly formatted file name path: %s\n", file_name_path);
 	else
 	{
-		if (!result->is_image)
-		{
-			if (!PathFileExistsA(file_name_path))
-			{
-				if (file_name_path[1] == ':')
-				{
-					StringAssign(result->target_drive, ToWideString(file_name_path, 2));
-					if (!IsDigits(file_name_path + 2))
-					{
-						printf("Warning: File not found with regular file search: %s\n", file_name_path);
-						StringAssign(result->target_path, ToWideString(file_name_path, 0));
-					}
-					else
-					{
-						SafeAlloc(result->mft_ref,1);
-						*(result->mft_ref) = strtoul(file_name_path + 2, NULL, 10);
-					}
-				}
-				else
-				{
-					return ErrorCleanUp(DeleteSettings, result, "Error: File probably locked.\n");
-				}
-			}
-			else
-			{
-				StringAssign(result->target_path, ToWideString(file_name_path, 0));
-				DWORD at = GetFileAttributesW(result->target_path);
-				if (at == INVALID_FILE_ATTRIBUTES)
-					return ErrorCleanUp(DeleteSettings, result, "Error: Could not retrieve file attributes.\n");
-
-				result->is_folder = at & FILE_ATTRIBUTE_DIRECTORY;
-				StringAssign(result->target_drive, ToWideString(file_name_path, 2));
-			}
-		}
-		else
-		{
-			if (result->target_path[0] == L'\\')
-				StringAssign(result->target_path, JoinStrings(L"", L"x:", result->target_path, NULL));
-			if (file_name_path[1] == ':')
-			{
-				result->target_path = ToWideString(file_name_path, 0);
-
-
-				if (IsDigitsW(result->target_path + 2))
-				{
-					SafeAlloc(result->mft_ref,1);
-					*(result->mft_ref) = wcstoul(result->target_path + 2, NULL, 10);
-				}
-			}
-			else
-			{
-				//very weird, probalby wrong error message:
-				return ErrorCleanUp(DeleteSettings, result, "Error: File probably locked.\n");
-			}
-
-		}
-		StringAssign(result->target_drive, EnsurePrefix(result->target_drive));
+		// Final option is a bit exotic: normal file path, correctly formatted, but 
+		// Windows API (PathFileExistsA) can't find it: give a warning an treat it as
+		// the normal case
+		printf("Warning: File not found with regular file search: %s\n", file_name_path);
+		result->source_drive = StringPrint(NULL, 0, L"%ls%.2hs", strncmp(file_name_path, "\\\\.\\", 4) ? L"\\\\.\\" : L"",
+			file_name_path);
+		result->source_path = StringPrint(NULL, 0, L"%hs", file_name_path);
 	}
+
 	return result;
 }
-
-wchar_t *EnsurePrefix(wchar_t* path)
-{
-	wchar_t* prefix = L"\\\\.\\";
-	if (wcsncmp(path, prefix, 4))
-	{
-		return  JoinStrings(L"", prefix, path, NULL);
-	}
-	return path;
-}
-
-bool SetUpImageFile(const uint64_t vol_index, settings set)
-{
-	StringAssign(set->target_drive, EnsurePrefix(set->target_drive));
-	bool result = true;
-
-	UT_array* vols = CheckMBR(set->target_drive);
-	if (!vols)
-		return false;
-	if (!HasNTFS(vols))
-	{
-		printf("Sorry, no NTFS volume found in that file.\n");
-		set->is_image = false;
-	}
-	else if (vol_index > 0)
-	{
-		set->is_image = true;
-		volume* vol = ((volume*)utarray_eltptr(vols, vol_index - 1));
-		if (!vol)
-		{
-			printf("Error: Volume %lld does not exist in image.\n", vol_index);
-			printf("Found volumes are:\n");
-			int i = 1;
-			for (volume* v = utarray_front(vols); v; v = utarray_next(vols, v))
-				wprintf(L"Volume %d, StartOffset %lld, Size %.2lf GB\n", i++, v->offset,
-					(double)((double)(v->size) / 2.0 / 1024.0 / 1024.0));
-			PrintHelp();
-			result = false;
-		}
-		else
-			set->image_offs = vol->offset;
-	}
-	utarray_free(vols);
-	return result;
-}
-
-
-UT_array* CheckMBR(const wchar_t* image_file)
-{
-	file_reader fr = OpenFileReader(image_file);
-	if (!fr)
-		return NULL;
-
-	bytes sector = ReadNextBytes(fr, 512);
-	if (!sector)
-		return NULL;
-	
-	UT_array* result;
-	utarray_new(result, &volume_icd);
-
-	for	(rsize_t part_ind = 446; part_ind < 512; part_ind += 16)
-	{
-		if (Same(sector, part_ind, 0, 16))
-			break;
-		unsigned char file_system_desc = Byte(sector,part_ind + 4);
-		uint64_t start_sector = ReadNumber(sector,part_ind + 8, 4);
-		uint64_t num_sectors = ReadNumber(sector, part_ind + 12, 4);
-
-		if (file_system_desc == 0xEE && start_sector == 1 && num_sectors == 4294967295)
-			//A typical dummy partition to prevent overwriting of GPT data, also known as "protective MBR"
-			CheckGPT(fr, image_file, result);
-		else if (file_system_desc == 0x05 || file_system_desc == 0x0F)
-			//Extended partition
-			CheckExtendedPartition(fr, start_sector, image_file, result);
-		else if (!TestNTFS(fr, start_sector, result, image_file))
-		{
-			AddVolume(result, L"Non-NTFS", start_sector, num_sectors);
-		}
-	}
-	if (!HasNTFS(result)) //Also check if pure partition image (without mbr)
-	{
-		TestNTFS(fr, 0, result, image_file);
-	}
-	CloseFileReader(fr);
-	DeleteBytes(sector);
-	return result;
-}
-
-void CheckExtendedPartition(const file_reader fr, uint64_t offset, const wchar_t* image_file, UT_array* list)
-{
-	bytes buffer = CreateBytes(512);
-
-	for (uint64_t next_entry = 0; ;)
-	{
-		if(!ReadBytesIn(buffer, fr, (offset + next_entry) * 512, 512))
-			break;
-
-		uint32_t part_table_offs = 0x1BE;
-
-		unsigned char file_syst_desc = Byte(buffer, (rsize_t)part_table_offs + 4);
-
-		uint64_t starting_sector = offset + next_entry + ReadNumber(buffer, (rsize_t)part_table_offs + 8, 4);
-
-		uint64_t num_sectors = ReadNumber(buffer, (rsize_t)part_table_offs + 12, 4);
-
-		if (file_syst_desc == 0x06 || file_syst_desc == 0x07)
-		{
-			if (!TestNTFS(fr, starting_sector, list, image_file))
-				AddVolume(list, L"Non-NTFS", starting_sector, num_sectors);
-		}
-		else if (file_syst_desc != 0x05 && file_syst_desc != 0x0F)
-		{
-			AddVolume(list, L"Non-NTFS", starting_sector, num_sectors);
-		}
-		if (Same(buffer, (rsize_t)part_table_offs + 16, 0, 16))
-			break; //No more entries
-
-		next_entry = ReadNumber(buffer, (rsize_t)part_table_offs + 24, 4);
-
-	}
-	DeleteBytes(buffer);
-
-}
-
-void CheckGPT(const file_reader fr, const wchar_t* image_file, UT_array* list)
-{
-	bytes buffer = ReadBytes(fr, 512, 512);
-	if (!buffer)
-		return;
-
-	if (!EqualsBuffer(buffer, 0, "\x45\x46\x49\x20\x50\x41\x52\x54", 8))
-	{
-		wchar_t* rec_dump = ToString(buffer);
-		wprintf(L"Error: Could not find GPT signature: %s\n", rec_dump);
-		free(rec_dump);
-		DeleteBytes(buffer);
-		return;
-	}
-	uint64_t StartLBA = ReadNumber(buffer, 72,8);
-	uint32_t num_partitions = (uint32_t)ReadNumber(buffer, 80, 4);
-	uint32_t partition_entry_sz = (uint32_t)ReadNumber(buffer, 84, 4);
-
-	DeleteBytes(buffer);
-	buffer = ReadBytes(fr, StartLBA * 512, (uint64_t)num_partitions * partition_entry_sz);
-	if (buffer == 0)
-		return;
-
-	for (uint32_t i = 0; i < partition_entry_sz; ++i)
-	{
-		uint64_t first_lba = ReadNumber(buffer, 32 + i * (rsize_t)partition_entry_sz, 8); 
-		uint64_t last_lba = ReadNumber(buffer, 40 + i * (rsize_t)partition_entry_sz, 8);
-		if (first_lba == 0 && last_lba == 0)
-			break; // No more entries
-		if (!TestNTFS(fr, first_lba, list, image_file))
-			AddVolume(list, L"Non-NTFS", first_lba, last_lba - first_lba);
-	}
-	DeleteBytes(buffer);
-}
-
-bool TestNTFS(const file_reader fr, uint64_t start_sector, UT_array* list, const wchar_t* image_file)
-{
-	bytes buffer = ReadBytes(fr, start_sector * 512, 512);
-	if (!buffer)
-		return false;
-
-	uint64_t total_sectors = ReadNumber(buffer, 40, 8);
-	if (EqualsBuffer(buffer, 3, "\x4E\x54\x46\x53", 4))
-	{
-		AddVolume(list, L"NTFS", start_sector * 512, total_sectors);
-		DeleteBytes(buffer);
-		return true; // Volume is NTFS
-	}
-
-	DeleteBytes(buffer);
-	wprintf(L"Error: Could not find NTFS on %ls at offset %lld\n", image_file, start_sector * 512);
-	return false;
-}
-
-bool HasNTFS(const UT_array* list)
-{
-	for (volume *v = utarray_front(list); v; v = utarray_next(list, v))
-		if (!wcscmp(v->type, L"NTFS"))
-			return true;
-	return false;
-}
-
 
 void PrintHelp()
 {
@@ -497,29 +267,17 @@ void DeleteSettings(settings set)
 		free(set->mft_ref);
 
 	if (set->output_folder)
-		free(set->output_folder);
+		DeleteString(set->output_folder);
 
 	if (set->output_file)
-		free(set->output_file);
+		DeleteString(set->output_file);
 
-	if (set->target_path)
-		free(set->target_path);
+	if (set->source_drive)
+		DeleteString(set->source_drive);
 
-	if (set->target_drive)
-		free(set->target_drive);
+	if (set->source_path)
+		DeleteString(set->source_path);
 
 	free(set);
-}
-
-void DeleteVol(volume* vol)
-{
-	if (vol->type)
-		free(vol->type);
-}
-
-void AddVolume(UT_array* list, const wchar_t* type, uint64_t offset, uint64_t size)
-{
-	volume newV = { DuplicateString(type), offset, size };
-	utarray_push_back(list, &newV);
 }
 

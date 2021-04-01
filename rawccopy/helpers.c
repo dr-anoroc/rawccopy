@@ -4,24 +4,9 @@
 #include <ctype.h>
 #include <windows.h>
 #include "helpers.h"
+#include "safe-string.h"
+#include "regex.h"
 
-#define _CRTDBG_MAP_ALLOC
-#include <stdlib.h>
-#include <crtdbg.h>
-
-#define SafeStrLen(s,len) do { \
-	if ((len = strnlen_s(s, MAX_NTFS_PATH)) == MAX_NTFS_PATH) \
-	{														\
-		ErrorExit("String exceeded maximum length.", -1);	\
-		return NULL;										\
-	}} while (0);
-
-#define SafeStrLenW(s,len) do { \
-	if ((len = wcsnlen_s(s, MAX_NTFS_PATH)) == MAX_NTFS_PATH) \
-	{														\
-		ErrorExit("String exceeded maximum length.", -1);	\
-		return NULL;										\
-	}} while (0);
 
 #define LZNT1_BLOCK_LEN( header ) ( ( (header) & 0x0fff ) + 1 )
 
@@ -33,55 +18,53 @@
 #define LZNT1_VALUE_OFFSET( tuple, split ) ( ( ((uint64_t)tuple) >> split ) + 1 )
 
 
-wchar_t* AllocateString(size_t len);
 long lznt1_block(bytes compressed, size_t limit, size_t offset1, bytes destination, size_t offset2);
 
-
-bool LZNT1Decompress(const bytes compressed, bytes decompressed)
+bool LZNT1Decompress(const bytes compressed, rsize_t offset1, bytes decompressed, rsize_t offset2)
 {
 	const uint16_t* header;
 	const uint8_t* end;
-	size_t offset = 0;
 	size_t out_len = 0;
 	size_t block_len;
 	size_t limit;
 	long block_out_len;
 
-	while (offset != compressed->buffer_len)
+	while (offset1 != compressed->buffer_len)
 	{
-		if ((offset + sizeof(*end)) == compressed->buffer_len)
+		if ((offset1 + sizeof(*end)) == compressed->buffer_len)
 		{
-			end = (compressed->buffer + offset);
+			end = (compressed->buffer + offset1);
 			if (*end == 0)
 				break;
 		}
 
-		if ((offset + sizeof(*header)) > compressed->buffer_len)
+		if ((offset1 + sizeof(*header)) > compressed->buffer_len)
 			return false;
 
-		header = (uint16_t *)(compressed->buffer + offset);
+		header = (uint16_t *)(compressed->buffer + offset1);
 
 		if (*header == 0)
 			break;
 
-		offset += sizeof(*header);
+		offset1 += sizeof(*header);
 
 		block_len = LZNT1_BLOCK_LEN(*(size_t*)header);
 		if (LZNT1_BLOCK_COMPRESSED(*header))
 		{
-			limit = (offset + block_len);
-			block_out_len = lznt1_block(compressed, limit, offset, decompressed, out_len);
+			limit = (offset1 + block_len);
+			block_out_len = lznt1_block(compressed, limit, offset1, decompressed, out_len);
 			if (block_out_len < 0)
 				return false;
-			offset += block_len;
+			offset1 += block_len;
 			out_len += block_out_len;
 		}
-		else if ((offset + block_len) > compressed->buffer_len)
+		else if ((offset1 + block_len) > compressed->buffer_len)
 			return false;
 		else
 		{
-			Patch(decompressed, out_len, compressed, offset, block_len);
-			offset += block_len;
+			memcpy(decompressed->buffer + out_len, compressed->buffer + offset1, block_len);
+
+			offset1 += block_len;
 			out_len += block_len;
 		}
 	}
@@ -118,16 +101,14 @@ long lznt1_block(bytes compressed, size_t limit, size_t offset1, bytes destinati
 			offset1 += sizeof(*tuple);
 			copy_len = LZNT1_VALUE_LEN(*(size_t*)tuple, split);
 
-			Patch(destination, offset2 + block_out_len, destination,
-				offset2 + block_out_len - LZNT1_VALUE_OFFSET(*tuple, split), copy_len);
-
+			uint8_t* dst = destination->buffer + offset2 + block_out_len;
+			uint8_t* src = dst - LZNT1_VALUE_OFFSET(*tuple, split);
 			block_out_len += copy_len;
-
+			while (copy_len--)
+				*(dst++) = *(src++);
 		}
 		else
-		{
-			Patch(destination, offset2 + block_out_len++, compressed, offset1++, 1);
-		}
+			*(destination->buffer + offset2 + block_out_len++) = *(compressed->buffer + offset1++);
 
 		while (block_out_len > next_threshold)
 		{
@@ -140,7 +121,6 @@ long lznt1_block(bytes compressed, size_t limit, size_t offset1, bytes destinati
 
 	return (long)block_out_len;
 }
-
 
 uint64_t ParseUnsigned(const void* buf, rsize_t length)
 {
@@ -164,7 +144,7 @@ void ErrorExit(const char* message, int exit_code)
 	exit(exit_code);
 }
 
-void* ErrorCleanUp(const void (*cleanup)(void*), void* object, const char* format, ...)
+void *ErrorCleanUp(const void (*cleanup)(void*), void* object, const char* format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -175,62 +155,44 @@ void* ErrorCleanUp(const void (*cleanup)(void*), void* object, const char* forma
 	return NULL;
 }
 
-int strncmp_nocase(const char* first, const char* second, size_t max)
-{
-	if (!first)
-		return !second;
-	else if (!second)
-		return 1;
-	else
-		for (size_t i = 0; i < max; ++i)
-		{
-			int delta = tolower(first[i]) - tolower(second[i]);
-			if (delta != 0 || !first[i])
-				return delta;
-		}
-	return 0;
-}
-
-
-bool LazyParse(const char* source, ...)
+bool CleanUpAndFail(const void (*cleanup)(void*), void* object, const char* format, ...)
 {
 	va_list args;
-	va_start(args, source);
-	for (char* token = va_arg(args, char*); token && *token; token = va_arg(args, char*))
-	{
-		char **result = va_arg(args, char**);
-		*(result) = strstr(source, token);
-		if (!(*result))
-		{
-			va_end(args);
-			return false;
-		}
-		source++;
-	}
+	va_start(args, format);
+	vprintf(format, args);
 	va_end(args);
-	return true;
+	if (cleanup)
+		(*cleanup)(object);
+	return false;
 }
 
 bool IsDigits(const char* input)
 {
-	if (!input || !*input)
-		return false;
-	for (int i = 0; i < MAX_NTFS_PATH && input[i]; ++i)
-		if (!isdigit(input[i]))
-			return false;
-
-	return true;
+	char* end_ptr = NULL;
+	return match("^\\d\\d*$", input, &end_ptr);
 }
 
-bool IsDigitsW(const wchar_t* input)
+string ExecutablePath()
 {
-	if (!input || !*input)
-		return false;
-	for (int i = 0; i < MAX_NTFS_PATH && input[i]; ++i)
-		if (!isdigit(input[i]))
-			return false;
+	string result = CreateEmpty();
 
-	return true;
+	for (rsize_t size = 8; size < 0x1000; size <<= 2)
+	{
+		Reserve(result, (size + 1) * sizeof(wchar_t));
+		DWORD cnt = GetModuleFileNameW(NULL, (wchar_t*)result->buffer, (DWORD)size);
+		if (cnt < size)
+		{
+			wchar_t* file_pt = wcsrchr((wchar_t*)result->buffer, L'\\');
+			if (file_pt)
+			{
+				*file_pt = L'\0';
+				RightTrim(result, result->buffer_len - ((char*)file_pt - result->buffer));
+				return result;
+			}
+		}
+
+	}
+	return ErrorCleanUp(DeleteBytes, result, "");
 }
 
 int wstrncmp_nocase(const wchar_t* first, const wchar_t* second, size_t max)
@@ -249,126 +211,23 @@ int wstrncmp_nocase(const wchar_t* first, const wchar_t* second, size_t max)
 	return 0;
 }
 
-wchar_t* ToWideString(const char* str, size_t length)
+
+int32_t FindInArray(const UT_array* array, const void* new_elem, void *context, int (*comp)(const void* first, const void* second, void* context))
 {
-	rsize_t len;
-	SafeStrLen(str,len);
-	if (length > 0 && len > length)
-		len = length;
-	wchar_t* result = AllocateString(len);
-	rsize_t res;
-	mbstowcs_s(&res, result, len + 1, str, len);
-	return result;
-}
+	int32_t l = 0, r, max;
+	r = max = utarray_len(array);
 
-wchar_t* AllocateString(size_t len)
-{
-	if (len >= MAX_NTFS_PATH)
-		return ErrorCleanUp(NULL, NULL, "String exceeds maximum length.\n");
-
-	SafePtrBlock(result, wchar_t*, len + 1);
-	return result;
-}
-
-wchar_t* JoinStrings(const wchar_t* seperator, ...)
-{
-	va_list args;
-	va_start(args, seperator);
-	size_t length = 0;
-	size_t part_len = 0;
-	size_t sep_len;
-	SafeStrLenW(seperator, sep_len);
-
-	for (wchar_t* part = va_arg(args, wchar_t*); part; part = va_arg(args, wchar_t*))
+	while (l <= r && l < max)
 	{
-		SafeStrLenW(part, part_len);
-		length += length == 0 ? part_len : (part_len ? part_len + sep_len : 0);
-		if (length >= MAX_NTFS_PATH)
-			return ErrorCleanUp(NULL, NULL, "String exceeds maximum length.\n");
+		int32_t m = (l + r) / 2;
+		int cmp = comp(new_elem, utarray_eltptr(array, (uint32_t)m), context);
+		if (cmp < 0)
+			r = m - 1;
+		else if (cmp > 0)
+			l = m + 1;
+		else
+			return m;
 	}
-	va_end(args);
-
-	wchar_t* result = AllocateString(length);
-	*result = 0;
-	va_start(args, seperator);
-
-	for (wchar_t* part = va_arg(args, wchar_t*); part; part = va_arg(args, wchar_t*))
-	{
-		if (*part)
-		{
-			if (*result)
-				wcscat_s(result, length + 1, seperator);
-			wcscat_s(result, length + 1, part);
-		}
-	}
-	return result;
+	return ~l;
 }
 
-wchar_t* NumberToString(uint64_t nmbr, int base)
-{
-	if (base < 2 || base > 36)
-	{
-		printf("Invalid base for number conversion.\n");
-		return NULL;
-	}
-	wchar_t* result = AllocateString(_MAX_U64TOSTR_BASE10_COUNT);
-
-	wchar_t* ptr = result, *ptr1 = result, tmp_char;
-	uint64_t tmp_value;
-
-	do {
-		tmp_value = nmbr;
-		nmbr /= base;
-		*ptr++ = L"zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz"[35 + (tmp_value - nmbr * base)];
-	} while (nmbr);
-
-	*ptr-- = L'\0';
-	while (ptr1 < ptr) {
-		tmp_char = *ptr;
-		*ptr-- = *ptr1;
-		*ptr1++ = tmp_char;
-	}
-	return result;
-}
-
-wchar_t* NtfsNameExtract(const uint8_t *input, rsize_t length)
-{
-	wchar_t* result = AllocateString(length);
-	if (result != NULL)
-	{
-		memcpy(result, input, length*sizeof(wchar_t));
-		*(result + length) = 0;
-	}
-	return result;
-}
-
-wchar_t* FormatNTFSDate(uint64_t date)
-{
-	SYSTEMTIME system_tm;
-	if (!FileTimeToSystemTime((FILETIME *)&date, &system_tm))
-		return NULL;
-
-	SYSTEMTIME loc_system_tm;
-	if (!SystemTimeToTzSpecificLocalTime(NULL, &system_tm, &loc_system_tm))
-		return NULL;
-
-	wchar_t* result = AllocateString(21);
-	int date_ln = GetDateFormatW(LOCALE_USER_DEFAULT, 0, &loc_system_tm, L"dd'-'MMM'-'yyyy ", result, 13);
-
-	GetTimeFormatW(LOCALE_USER_DEFAULT, 0, &loc_system_tm, L"HH':'mm':'ss", result + date_ln - 1, 9);
-
-	return result;
-}
-
-
-wchar_t* DuplicateString(const wchar_t* src)
-{
-	size_t len;
-	SafeStrLenW(src,len);
-	wchar_t* result = AllocateString(len);
-	if (result)
-	{
-		memcpy(result, src, (len + 1) * sizeof(wchar_t));
-	}
-	return result;
-}
