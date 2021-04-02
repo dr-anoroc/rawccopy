@@ -16,7 +16,7 @@ Some of the bugs that were reported on Github revealed fundamental flaws in the 
 
 ##### Overall behaviour
 
-The command line is exactly the same as documented [here](https://github.com/jschicht/RawCopy) and the specification of the programs are almost identical. The differences are:
+The command line is exactly the same as documented [here](https://github.com/jschicht/RawCopy) and the specifications of the programs are almost identical. The differences are:
 
 * rawccopy supports links, ie it is able to follow links such as `c:\Users\All Users` -> `c:\ProgramData`
 * rawccopy correctly supports compressed files, where rawcopy, doesn't handle all of them correctly;
@@ -25,11 +25,11 @@ The command line is exactly the same as documented [here](https://github.com/jsc
 
 There are some points to note about the rawccopy (and rawcopy) command line:
 
-* When using a device or hard disk specification in the `/FileName:` parameter, ie `/FileName:HardDisk1Partition3`,  `/FileName:HardDisk1Partition3`, `/FileName:HarddiskVolume1`, `/FileName:HarddiskVolumeShadowCopy1` or `/FileName:PhysicalDrive1`, rawcopy imposes these indexes to be maximum one digit long, eg `/FileName:HarddiskVolume1` is OK but not`/FileName:HarddiskVolume11`.
+* When using a device or hard disk specification in the `/FileNamePath:` parameter, ie `/FileNamePath:HardDisk1Partition3`,  `/FileNamePath:HardDisk1Partition3`, `/FileNamePath:HarddiskVolume1`, `/FileNamePath:HarddiskVolumeShadowCopy1` or `/FileNamePath:PhysicalDrive1`, rawcopy imposes these indexes to be maximum one digit long, eg `/FileNamePath:HarddiskVolume1` is OK but not`/FileNamePath:HarddiskVolume11`.
 
-  Windows does not limit hard disk, volume and partition indexes to one digit, therefore rawcopy's <u>behaviour is not correct</u> and rawccopy supports indexes of more than one digit.
+  Windows does not limit hard disk, volume and partition indexes to one digit, therefore rawcopy's **behaviour is not correct** and rawccopy supports indexes of more than one digit.
 
-* When using a file name specification like `/FileName:PhysicalDrive1`, rawcopy actually needs to be told in which partition to look. Contrary to what is documented [here](https://github.com/jschicht/RawCopy), it does this through the `/ImageVolume:` parameter. For rawccopy the situation is exactly the same.
+* When using a file name specification like `/FileNamePath:PhysicalDrive1`, rawcopy actually needs to be told in which partition to look. Contrary to what is documented [here](https://github.com/jschicht/RawCopy), it does this through the `/ImageVolume:` parameter. For rawccopy the situation is exactly the same.
 
 * As usual in the Windows universe, all aspects of the command line are case insensitive.
 
