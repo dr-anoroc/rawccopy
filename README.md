@@ -1,3 +1,5 @@
+[![Build & Publish](https://github.com/spectatorBH/rawccopy/actions/workflows/msbuild.yml/badge.svg)](https://github.com/spectatorBH/rawccopy/actions/workflows/msbuild.yml)
+
 # rawccopy
 
 Rawccopy is a one-to-one port of [rawcopy](https://github.com/jschicht/RawCopy) to C. The command line is backwards compatible with the original rawcopy (with some clarifications below) and the behaviour of the two programs is virtually identical.
