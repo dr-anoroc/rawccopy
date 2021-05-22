@@ -2,7 +2,11 @@ name: Build & Publish
 
 on:
   workflow_dispatch:
-  
+
+defaults:
+  run:
+    shell: cmd  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -15,10 +19,12 @@ jobs:
       uses: microsoft/setup-msbuild@v1.0.2
 
     - name: Build x86 binary...
-      run: msbuild /m /p:Configuration=Release /p:Platform=x86 .
+      run: |
+           msbuild /m /p:Configuration=Release /p:Platform=x86 .
+           msbuild /m /p:Configuration=Release /p:Platform=x64 .
 
-    - name: Build x64 binary...
-      run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
+#    - name: Build x64 binary...
+#      run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
 
     - name: Publish x86 binary...
       uses: actions/upload-artifact@v2
@@ -33,10 +39,10 @@ jobs:
         path: x64/Release/rawccopy.exe
     
     - name: Copy x64 build under Release dir...
-      run: cmd (echo d | xcopy x64\Release\rawccopy.exe Release\x64 && del *.pdb)
+      run: cmd echo d | xcopy x64\Release\rawccopy.exe Release\x64 && del *.pdb
       
     - name: Publish x86/x64 binaries...
       uses: actions/upload-artifact@v2
       with:
         name: rawccopy-bin
-        path: Release\*.exe
+        path: Release
