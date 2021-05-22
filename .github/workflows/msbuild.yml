@@ -15,7 +15,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1.0.2
     
     - name: Build x64 binary...
-      working-directory: ${{env.GITHUB_WORKSPACE}}
+#      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
   
     - name: Publish x64 binary...
@@ -25,11 +25,11 @@ jobs:
         path: x64/Release/rawccopy.exe
         
     - name: Build x86 binary...
-      working-directory: ${{env.GITHUB_WORKSPACE}}
+#      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=Release /p:Platform=x86 .
 
     - name: Publish x86 binary...
       uses: actions/upload-artifact@v2
       with:
         name: rawccopy_x86
-        path: x86/Release/rawccopy.exe
+        path: Release/rawccopy.exe
