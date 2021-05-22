@@ -37,7 +37,7 @@ jobs:
 #        path: x64/Release/rawccopy.exe
     
     - name: Combine x86/x64 binaries under Release dir...
-      run: cmd echo f | xcopy x64\Release\rawccopy.exe Release\rawccopy_x64.exe && del Release\*.pdb
+      run: echo f | xcopy x64\Release\rawccopy.exe Release\rawccopy_x64.exe && del Release\*.pdb
       
     - name: Publish binaries...
       uses: actions/upload-artifact@v2
