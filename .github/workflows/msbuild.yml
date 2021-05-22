@@ -32,11 +32,11 @@ jobs:
         name: rawccopy_x64
         path: x64/Release/rawccopy.exe
     
-    - name: Move x64 build under Release dir...
+    - name: Copy x64 build under Release dir...
       run: cmd echo d | xcopy x64\Release\rawccopy.exe Release\x64
       
     - name: Publish x86/x64 binaries...
       uses: actions/upload-artifact@v2
       with:
-        name: rawccopy
+        name: rawccopy-bin
         path: Release
