@@ -33,10 +33,10 @@ jobs:
         path: x64/Release/rawccopy.exe
     
     - name: Copy x64 build under Release dir...
-      run: cmd echo d | xcopy x64\Release\rawccopy.exe Release\x64
+      run: cmd (echo d | xcopy x64\Release\rawccopy.exe Release\x64 && del *.pdb)
       
     - name: Publish x86/x64 binaries...
       uses: actions/upload-artifact@v2
       with:
         name: rawccopy-bin
-        path: Release
+        path: Release\*.exe
