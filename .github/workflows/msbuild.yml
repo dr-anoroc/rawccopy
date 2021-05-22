@@ -13,23 +13,23 @@ jobs:
 
     - name: Add MSBuild to PATH...
       uses: microsoft/setup-msbuild@v1.0.2
-      
-    - name: Build x32 binary...
-#      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild /m /p:Configuration=Release /p:Platform=x32 .
-      
+    
     - name: Build x64 binary...
-#      working-directory: ${{env.GITHUB_WORKSPACE}}
+      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
+  
+    - name: Publish x64 binary...
+      uses: actions/upload-artifact@v2
+      with:
+        name: rawccopy_x64.exe
+        path: x64/Release/rawccopy.exe
+        
+    - name: Build x32 binary...
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=Release /p:Platform="Any CPU" .
 
     - name: Publish x32 binary...
       uses: actions/upload-artifact@v2
       with:
         name: rawccopy_x32.exe
         path: x32/Release/rawccopy.exe
-        
-    - name: Publish x64 binary...
-      uses: actions/upload-artifact@v2
-      with:
-        name: rawccopy_x64.exe
-        path: x64/Release/rawccopy.exe
