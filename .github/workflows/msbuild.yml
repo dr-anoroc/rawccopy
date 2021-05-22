@@ -2,20 +2,6 @@ name: Build & Publish
 
 on:
   workflow_dispatch:
-#on: [push]
-
-defaults:
-  run:
-    shell: cmd
-
-env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
-
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
   
 jobs:
   build:
@@ -27,18 +13,23 @@ jobs:
 
     - name: Add MSBuild to PATH...
       uses: microsoft/setup-msbuild@v1.0.2
+      
+    - name: Build x32 binary...
+#      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=Release /p:Platform=x32 .
+      
+    - name: Build x64 binary...
+#      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
 
-    - name: Build...
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
-
-    - name: List x64\Release dir...
-      run: cmd dir x64\Release
-   
-    - name: Publish artifacts...
+    - name: Publish x32 binary...
       uses: actions/upload-artifact@v2
       with:
-        name: rawccopy.exe
-        path: x64\Release
+        name: rawccopy_x32.exe
+        path: x32/Release/rawccopy.exe
+        
+    - name: Publish x64 binary...
+      uses: actions/upload-artifact@v2
+      with:
+        name: rawccopy_x64.exe
+        path: x64/Release/rawccopy.exe
