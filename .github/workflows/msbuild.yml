@@ -10,37 +10,26 @@ defaults:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Add MSBuild to PATH...
-      uses: microsoft/setup-msbuild@v1.0.2
+      uses: microsoft/setup-msbuild@v1
 
     - name: Build x86 binary...
       run: msbuild /m /p:Configuration=Release /p:Platform=x86 .
 
     - name: Build x64 binary...
       run: msbuild /m /p:Configuration=Release /p:Platform=x64 .
-
-#    - name: Publish x86 binary...
-#      uses: actions/upload-artifact@v2
-#      with:
-#        name: rawccopy_x86
-#        path: Release/rawccopy.exe
-
-#    - name: Publish x64 binary...
-#      uses: actions/upload-artifact@v2
-#      with:
-#        name: rawccopy_x64
-#        path: x64/Release/rawccopy.exe
     
     - name: Combine x86/x64 binaries under Release dir...
       run: echo f | xcopy x64\Release\rawccopy.exe Release\rawccopy_x64.exe && del Release\*.pdb
       
     - name: Publish binaries...
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: rawccopy-bin
         path: Release
+        if-no-files-found: error
